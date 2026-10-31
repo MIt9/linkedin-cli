@@ -31,15 +31,21 @@ export async function cli(args: string[], env: Record<string, string> = {}) {
 
 // Real service in a child process, throwaway dir and port, gap/limits relaxed (tests override as needed).
 export async function startSvc(extra: Record<string, string> = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "lcli-"));
-  const port = await freePort();
-  const env = {
-    LINKEDIN_CLI_DIR: dir, LINKEDIN_CLI_EXT_SRC: KEYLESS_EXT, LINKEDIN_CLI_PORT: String(port), LINKEDIN_CLI_GAP_MIN_MS: "0", LINKEDIN_CLI_GAP_MAX_MS: "0",
-    LINKEDIN_CLI_LIMIT_HOUR: "1000", LINKEDIN_CLI_LIMIT_DAY: "1000", ...extra,
-  };
-  const run = (...a: string[]) => cli(a, env);
-  const started = await run("service", "start");
-  if (started.code !== 0) throw new Error(`service start failed: ${started.err}`);
+  // freePort() releases the port before the service binds it, so a parallel test file can steal it: retry with a new port.
+  let dir = "", port = 0, env: Record<string, string> = {}, run = (...a: string[]) => cli(a, env), lastErr = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    dir = mkdtempSync(join(tmpdir(), "lcli-"));
+    port = await freePort();
+    env = {
+      LINKEDIN_CLI_DIR: dir, LINKEDIN_CLI_EXT_SRC: KEYLESS_EXT, LINKEDIN_CLI_PORT: String(port), LINKEDIN_CLI_GAP_MIN_MS: "0", LINKEDIN_CLI_GAP_MAX_MS: "0",
+      LINKEDIN_CLI_LIMIT_HOUR: "1000", LINKEDIN_CLI_LIMIT_DAY: "1000", ...extra,
+    };
+    const started = await run("service", "start");
+    if (started.code === 0) break;
+    lastErr = started.err;
+    rmSync(dir, { recursive: true, force: true });
+    if (attempt === 2) throw new Error(`service start failed: ${lastErr}`);
+  }
   const cfg = { dir, port };
   return {
     dir, port, env, run, cfg,
