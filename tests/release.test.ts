@@ -282,6 +282,24 @@ exit 1
     expect(readFileSync(s.ghLog, "utf8")).toContain("--repo MIt9/linkedin-cli");
   });
 
+  test("runs `extension install --text` and ends with a short summary, no duplicated steps", () => {
+    const rel = release(), s = shims(true, false);
+    const r = run({ LINKEDIN_CLI_BASE_URL: `file://${rel}`, PATH: `/usr/bin:/bin:${s.d}`, GH_LOG: s.ghLog, CURL_LOG: s.curlLog });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("fake linkedin extension install --text");
+    expect(r.out).not.toContain("Next: finish the 3 steps above");
+    expect(r.out).toContain(`Done: linkedin ${V} installed to ${join(r.home, "bin/linkedin")}`);
+    expect(r.out).toContain("Chrome steps above");
+    expect(r.out).not.toContain("Load unpacked"); // the steps come from the command itself
+    expect(r.out).toContain("is not in your PATH"); // PATH hint only when needed, and after the extension output
+    expect(r.out.indexOf("is not in your PATH")).toBeGreaterThan(r.out.indexOf("fake linkedin"));
+  });
+  test("no PATH hint when the bin dir is already on PATH", () => {
+    const rel = release(), s = shims(true, false), bin = join(tmp(), "bin");
+    const r = run({ LINKEDIN_CLI_BASE_URL: `file://${rel}`, LINKEDIN_CLI_BIN_DIR: bin, PATH: `${bin}:${process.env.PATH}`, GH_LOG: s.ghLog, CURL_LOG: s.curlLog });
+    expect(r.code).toBe(0);
+    expect(r.out).not.toContain("is not in your PATH");
+  });
   test("LINKEDIN_CLI_BASE_URL override works (file://) and never calls gh", () => {
     const rel = release(), s = shims(true, false);
     const r = run({ LINKEDIN_CLI_BASE_URL: `file://${rel}`, PATH: `${s.d}:${process.env.PATH}`, GH_LOG: s.ghLog, CURL_LOG: s.curlLog });

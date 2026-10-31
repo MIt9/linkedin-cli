@@ -24,7 +24,7 @@ curl -fsSL https://github.com/MIt9/linkedin-cli/releases/latest/download/install
 
 Типове джерело: `https://github.com/MIt9/linkedin-cli/releases/latest/download` (GitHub Releases, остання версія). Якщо `install.sh` отримав 404 на типовому URL і `gh` авторизований (`gh auth status`), він спробує `gh release download`; інакше зупиниться з повідомленням "release not found" (перевірте URL і що реліз існує). Для власного `LINKEDIN_CLI_BASE_URL` fallback не вмикається.
 
-`scripts/install.sh` (POSIX sh, без `sudo`, можна запускати повторно): визначає архітектуру (`arm64`/`x64`), бере `latest.json` за `LINKEDIN_CLI_BASE_URL`, перевіряє sha256, ставить `~/.local/bin/linkedin` (попередній бінарник лишається як `linkedin.old`) і запускає `linkedin extension install`. Якщо `~/.local/bin` не в `PATH`, скрипт надрукує рядок для `~/.zshrc` (сам файл не змінює):
+`scripts/install.sh` (POSIX sh, без `sudo`, можна запускати повторно): визначає архітектуру (`arm64`/`x64`), бере `latest.json` за `LINKEDIN_CLI_BASE_URL`, перевіряє sha256, ставить `~/.local/bin/linkedin` (попередній бінарник лишається як `linkedin.old`) і запускає `linkedin extension install --text`. Якщо `~/.local/bin` не в `PATH`, скрипт наприкінці надрукує рядок для `~/.zshrc` (сам файл не змінює):
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -39,16 +39,39 @@ xattr -d com.apple.quarantine ~/.local/bin/linkedin
 ### Перший запуск і підключення розширення
 
 ```sh
-linkedin extension install --open   # копіює розширення в ~/.linkedin-cli/extension, відкриває chrome://extensions
+linkedin extension install --text --open   # копіює розширення в ~/.linkedin-cli/extension, відкриває chrome://extensions
 linkedin service start
-linkedin doctor
+linkedin doctor --text
 ```
 
-`extension install` друкує JSON із `path`, `extensionId` і трьома ручними кроками (шлях також потрапляє в буфер обміну через `pbcopy`, якщо він є):
+За замовчуванням команди друкують JSON (його читають агенти). Для людини є прапорець `--text` (`extension install`, `doctor`, `update`): коротке пояснення звичайною мовою. `install.sh` сам викликає `linkedin extension install --text`, тож після `curl ... | sh` ви бачите:
 
-1. Відкрийте `chrome://extensions`.
-2. Увімкніть **Developer mode** (перемикач угорі праворуч).
-3. **Load unpacked** і виберіть `~/.linkedin-cli/extension` (у діалозі: Cmd+Shift+G, потім Cmd+V).
+```
+Extension 0.2.4 installed to /Users/you/.linkedin-cli/extension
+Extension ID: pkgbinmnaaomjnafdfocndamjhaaoffl
+Path copied to clipboard
+
+Next, in Chrome:
+  1. Open chrome://extensions
+  2. Turn on Developer mode (top right)
+  3. If an older 'LinkedIn CLI Bridge' is loaded, click Remove (the extension ID changed in 0.2.x; Reload is not enough)
+  4. Click Load unpacked, press Cmd+Shift+G in the folder dialog, paste the path (Cmd+V) and confirm
+  5. Then run: linkedin service start && linkedin doctor
+
+Done: linkedin 0.2.4 installed to /Users/you/.local/bin/linkedin.
+Now finish the Chrome steps above; the last one starts the service and checks everything.
+```
+
+Рядок «Path copied to clipboard» з'являється, лише якщо `pbcopy` спрацював; якщо файли вже були актуальні, перший рядок скаже `already installed ... (files unchanged)`, а якщо стару папку замінено, буде `Previous folder kept as ...extension.bak`. Без `--text` `extension install` друкує JSON із `path`, `extensionId` і трьома ручними кроками.
+
+`linkedin doctor --text` друкує по рядку на перевірку, для збоїв додає відступний рядок `fix:` і підсумок (код виходу 1 лишається):
+
+```
+[ok] binary version: linkedin 0.2.4 (/Users/you/.local/bin/linkedin)
+[FAIL] service running: not running
+    fix: Run `linkedin service start`.
+Problems found: 1 of 9 checks failed. Apply the fix lines above, then run: linkedin doctor --text
+```
 
 Це робиться один раз: каталог стабільний, а ID розширення зафіксований ключем у `manifest.json` (`pkgbinmnaaomjnafdfocndamjhaaoffl`). Сервіс приймає `/ext` лише від `chrome-extension://<цей ID>`. `linkedin service status` має показати `extensionPinned: true`, `connected: true`, `match: true`.
 

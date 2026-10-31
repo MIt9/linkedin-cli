@@ -74,6 +74,67 @@ describe("extension install / path", () => {
   });
 });
 
+describe("--text (human output; JSON stays the default)", () => {
+  const STEPS = ["1. Open chrome://extensions", "2. Turn on Developer mode (top right)", "Remove", "extension ID changed", "Load unpacked", "Cmd+Shift+G", "Cmd+V", "5. Then run: linkedin service start && linkedin doctor"];
+  test("extension install --text: new install, clipboard, steps; stdout is not JSON", async () => {
+    const k = key(), state = tmp(), sh = shims(), path = join(state, "extension");
+    const r = await cli(["extension", "install", "--text"], { LINKEDIN_CLI_DIR: state, LINKEDIN_CLI_EXT_SRC: extSrc("1.2.3", k), PATH: sh.PATH });
+    expect(r.code).toBe(0);
+    expect(r.json).toBeUndefined();
+    expect(r.out).toContain(`Extension 1.2.3 installed to ${path}`);
+    expect(r.out).toContain(`Extension ID: ${extensionId(k)}`);
+    expect(r.out).toContain("Path copied to clipboard");
+    for (const s of STEPS) expect(r.out, s).toContain(s);
+    expect(r.out).not.toMatch(/unchanged|\.bak/);
+  });
+  test("extension install --text: no clipboard line when pbcopy fails; unchanged and backup cases", async () => {
+    const k = key(), state = tmp(), sh = shims(1), path = join(state, "extension");
+    const env = { LINKEDIN_CLI_DIR: state, LINKEDIN_CLI_EXT_SRC: extSrc("1.2.3", k), PATH: sh.PATH };
+    const first = await cli(["extension", "install", "--text"], env);
+    expect(first.out).not.toContain("clipboard");
+    const same = await cli(["extension", "install", "--text"], env);
+    expect(same.out).toContain(`Extension 1.2.3 already installed to ${path}`);
+    expect(same.out).toContain("files unchanged");
+    const upd = await cli(["extension", "install", "--text"], { ...env, LINKEDIN_CLI_EXT_SRC: extSrc("1.2.4", k, "bg-v2") });
+    expect(upd.out).toContain(`Extension 1.2.4 installed to ${path}`);
+    expect(upd.out).toContain(`Previous folder kept as ${path}.bak`);
+  });
+  test("default output is still JSON (extension install, doctor)", async () => {
+    const r = await cli(["extension", "install"], { LINKEDIN_CLI_DIR: tmp(), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), PATH: shims().PATH });
+    expect(r.json.steps).toHaveLength(3);
+    expect((await cli(["doctor"], { LINKEDIN_CLI_DIR: join(tmp(), "none"), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), LINKEDIN_CLI_PORT: "47999" })).json.checks).toBeTruthy();
+  });
+  test("doctor --text on a fresh machine: [ok]/[FAIL] lines, indented fix, verdict, exit 1", async () => {
+    const r = await cli(["doctor", "--text"], { LINKEDIN_CLI_DIR: join(tmp(), "none"), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), LINKEDIN_CLI_PORT: "47999" });
+    expect(r.code).toBe(1);
+    expect(r.json).toBeUndefined();
+    const lines = r.out.trimEnd().split("\n");
+    expect(lines).toContain(`[ok] binary version: linkedin ${VERSION} (source checkout)`);
+    const i = lines.findIndex((l) => l.startsWith("[FAIL] service running: "));
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]).toBe("    fix: Run `linkedin service start`.");
+    expect(lines.at(-1)).toMatch(/^Problems found: \d+ of 9 checks failed\./);
+  });
+  test("doctor --text healthy: all [ok], verdict, exit 0 when Chrome is present", async () => {
+    const svc = await startSvc(), sh = shims(), env = { ...svc.env, PATH: sh.PATH };
+    try {
+      await cli(["extension", "install"], env);
+      const ext = await fakeExt(svc);
+      const r = await cli(["doctor", "--text"], env);
+      const lines = r.out.trimEnd().split("\n");
+      expect(lines.filter((l) => l.startsWith("[ok] ")).length).toBeGreaterThanOrEqual(8);
+      if (r.code === 0) { expect(lines.some((l) => l.startsWith("[FAIL]"))).toBe(false); expect(lines.at(-1)).toBe("All good: 9 of 9 checks passed."); }
+      else expect(lines.filter((l) => l.startsWith("[FAIL]"))).toHaveLength(1); // only Chrome.app may be missing on a CI box
+      ext.close();
+    } finally { await svc.stop(); }
+  });
+  test("--text is validated like other flags: help lists it, wrong command rejects it", async () => {
+    for (const c of [["extension", "install"], ["doctor"], ["update"]]) expect((await cli([...c, "--help"])).out, c.join(" ")).toContain("--text");
+    expect((await cli(["extension", "path", "--text"], { LINKEDIN_CLI_DIR: tmp() })).code).toBe(2);
+    expect((await cli(["doctor", "--text=x"], { LINKEDIN_CLI_DIR: tmp() })).code).toBe(2);
+  });
+});
+
 describe("doctor", () => {
   test("fresh machine: fails with a fix for each failing check, exit 1", async () => {
     const r = await cli(["doctor"], { LINKEDIN_CLI_DIR: join(tmp(), "none"), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), LINKEDIN_CLI_PORT: "47999" });
@@ -158,6 +219,21 @@ describe("update (fake local release server; the real download path is not live-
     } finally { rel.stop(); }
     const same = release(VERSION), s2 = setup(same.url);
     try { expect((await cli(["update"], s2.env)).json).toMatchObject({ updateAvailable: false, updated: false }); expect(readFileSync(s2.bin, "utf8")).toBe("OLD"); } finally { same.stop(); }
+  });
+  test("--text: check says what to run, same version says up to date, real update names the files", async () => {
+    const rel = release(NEXT_MINOR), s = setup(rel.url);
+    try {
+      const c = await cli(["update", "--check", "--text"], s.env);
+      expect(c.json).toBeUndefined();
+      expect(c.out).toContain(`Update available: ${VERSION} -> ${NEXT_MINOR}. Run: linkedin update`);
+      const u = await cli(["update", "--text"], s.env);
+      expect(u.code).toBe(0);
+      expect(u.out).toContain(`Updated linkedin ${VERSION} -> ${NEXT_MINOR}`);
+      expect(u.out).toContain(`Previous binary kept as ${s.bin}.old`);
+      expect(u.out).toContain("chrome://extensions");
+    } finally { rel.stop(); }
+    const same = release(VERSION), s2 = setup(same.url);
+    try { expect((await cli(["update", "--text"], s2.env)).out).toContain(`linkedin ${VERSION} is up to date`); } finally { same.stop(); }
   });
   test("update with service down: binary replaced (previous kept as .old), extension folder refreshed, no temp left", async () => {
     const rel = release(NEXT_MINOR), s = setup(rel.url);

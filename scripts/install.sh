@@ -76,16 +76,16 @@ fi
 mv -f "$TARGET.new.$$" "$TARGET"
 xattr -d com.apple.quarantine "$TARGET" 2>/dev/null || true # unsigned binary: harmless if the attribute is absent
 
+echo
+"$TARGET" extension install --text
+echo
+echo "Done: linkedin $VERSION installed to $TARGET."
+echo "Now finish the Chrome steps above; the last one starts the service and checks everything."
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
     echo
-    echo "$BIN_DIR is not in your PATH. Add this line to ~/.zshrc (not done for you), then open a new terminal:"
+    echo "$BIN_DIR is not in your PATH, so open a new terminal after adding this line to ~/.zshrc (not done for you):"
     if [ "$BIN_DIR" = "$HOME/.local/bin" ]; then echo '  export PATH="$HOME/.local/bin:$PATH"'; else echo "  export PATH=\"$BIN_DIR:\$PATH\""; fi
     ;;
 esac
-
-echo
-"$TARGET" extension install
-echo
-echo "Next: finish the 3 steps above in Chrome, then run: linkedin service start && linkedin doctor"

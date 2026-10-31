@@ -7,6 +7,7 @@ import { configCommand } from "./config";
 import { serviceCommand } from "./ctl";
 import { CliError, WithExit } from "./errors";
 import { doctor, extensionCommand, update } from "./dist";
+import { doctorText, extensionInstallText, updateText } from "./text";
 
 export { DEFAULT_PORT, DEFAULT_STATE_DIR } from "./config";
 
@@ -24,7 +25,10 @@ async function main(args: string[]): Promise<unknown> {
     let v;
     try { v = parseArgs({ args: args.slice(1), options: parseOptions(m as any), allowPositionals: true, strict: true }); } catch (e: any) { throw new CliError("USAGE", e.message); }
     if (v.positionals.length) throw new CliError("USAGE", `Unknown command: ${args.join(" ")}`);
-    return group === "doctor" ? doctor() : update(!!v.values.check);
+    const text = !!v.values.text;
+    if (group === "doctor") { const d = await doctor(); return text ? new WithExit(doctorText(d.value as any), d.code) : d; }
+    const u = await update(!!v.values.check);
+    return text ? updateText(u) : u;
   }
   if (!group || !cmd || !Object.hasOwn(GROUPS, group)) throw new CliError("USAGE", `Unknown command: ${args.join(" ") || "(empty)"}`);
   if (group === "config") {
@@ -41,7 +45,8 @@ async function main(args: string[]): Promise<unknown> {
     let v;
     try { v = parseArgs({ args: rest, options: parseOptions(SERVICE_DEFS[key] as any), allowPositionals: true, strict: true }); } catch (e: any) { throw new CliError("USAGE", e.message); }
     if (v.positionals.length) throw new CliError("USAGE", `Unknown command: ${args.join(" ")}`);
-    return extensionCommand(cmd, { open: !!v.values.open });
+    const r = extensionCommand(cmd, { open: !!v.values.open });
+    return v.values.text ? extensionInstallText(r) : r;
   }
   const found = resolve(group, cmd);
   if (!found) throw new CliError("USAGE", `Unknown command: ${args.join(" ")}`);
@@ -54,7 +59,7 @@ async function main(args: string[]): Promise<unknown> {
 if (import.meta.main) {
   try {
     const out = await main(Bun.argv.slice(2));
-    if (out instanceof WithExit) { console.log(JSON.stringify(out.value)); process.exitCode = out.code; }
+    if (out instanceof WithExit) { console.log(out.value instanceof Raw ? out.value.text : JSON.stringify(out.value)); process.exitCode = out.code; }
     else console.log(out instanceof Raw ? out.text : JSON.stringify(out));
   } catch (e) {
     const err = e instanceof CliError ? e : new CliError("INTERNAL", String((e as Error)?.message ?? e));
