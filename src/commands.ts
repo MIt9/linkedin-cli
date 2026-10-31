@@ -215,28 +215,26 @@ SERVICE_DEFS["config get"] = { d: "Show the effective configuration and where ea
 SERVICE_DEFS["config set"] = { d: "Persist a setting in ~/.linkedin-cli/config.json.", fx: "local", out: "The effective configuration (as config get) after the change.", ex: [`${L} config set port 50123`, `${L} config set update_url https://example.com/linkedin-cli`], notes: `Usage: ${L} config set <key> <value>. ${CK} Invalid key or value is USAGE (exit 2). Restart the service and enter ws://127.0.0.1:<port>/ext in the extension popup afterwards.` };
 SERVICE_DEFS["config unset"] = { d: "Remove a setting from config.json (back to the default).", fx: "local", out: "The effective configuration (as config get) after the change.", ex: [`${L} config unset port`], notes: `Usage: ${L} config unset <key>. ${CK}` };
 
-const TEXT = B("Print a short plain-language summary instead of JSON (for people; agents should keep the JSON default). Errors stay JSON on stderr.");
 const BIN = "State dir is ~/.linkedin-cli (LINKEDIN_CLI_DIR).";
 SERVICE_DEFS["extension install"] = {
   d: "Copy the bundled Chrome extension to a stable folder and print the manual steps to load it unpacked.", fx: "local",
-  out: "{ path, version, extensionId, changed, backup, clipboard, opened, steps[] }: path is <state dir>/extension; steps are the 3 manual Chrome steps. With --text: plain text with the path, extension ID and the 5 numbered steps (including Remove of an older extension and the final service start + doctor).",
+  out: "{ path, version, extensionId, changed, backup, clipboard, opened, steps[] }: path is <state dir>/extension; steps are the 3 manual Chrome steps. Text form: the path, extension ID and 5 numbered steps (including Remove of an older extension and the final service start + doctor).",
   ex: [`${L} extension install`, `${L} extension install --open`],
   notes: `${BIN} Writes .version; a different existing folder is kept as extension.bak (never overwritten silently). Copies the path to the clipboard via pbcopy if present. Chrome cannot be scripted to load it: you do the steps once; later updates only need Reload.`,
-  opts: { open: B("Also open chrome://extensions in Google Chrome (best effort, never fails)."), text: TEXT },
+  opts: { open: B("Also open chrome://extensions in Google Chrome (best effort, never fails).") },
 };
 SERVICE_DEFS["extension path"] = { d: "Print the stable folder to select in Chrome 'Load unpacked'.", fx: "read", out: "{ path, installed }.", ex: [`${L} extension path`], notes: BIN };
 SERVICE_DEFS.doctor = {
   d: "Diagnose the install: versions, permissions, service, port, extension connection and files, halt state, Chrome.", fx: "read",
   out: "{ ok, checks: [{ name, ok, detail, fix }] }; exit code 1 if any check fails.", ex: [`${L} doctor`],
-  notes: "Read-only. Each failed check carries a concrete fix. Compatibility = same major.minor between CLI and extension. With --text: one line per check, [ok] or [FAIL] name: detail, an indented fix: line for each failure, and a verdict line (exit code is still 1 on failure).",
-  opts: { text: TEXT },
-};
+  notes: "Read-only. Each failed check carries a concrete fix. Compatibility = same major.minor between CLI and extension. Text form: a one-line verdict first, then one line per check, [ok] or [FAIL] name: detail, with an indented fix: line for each failure (exit code is still 1 on failure).",
+  };
 SERVICE_DEFS.update = {
   d: "Update the binary and the extension folder from the release source (update_url), then restart the service if idle.", fx: "local",
-  out: "{ current, latest, updateAvailable, updated, binary, extension, service, extensionReload } (--check: only the first three). With --text: a short sentence summary instead.",
+  out: "{ current, latest, updateAvailable, updated, binary, extension, service, extensionReload } (--check: only the first three). Text form: a short sentence summary.",
   ex: [`${L} update --check`, `${L} update`],
   notes: `Release source: update_url, default the GitHub latest release (override: ${L} config set update_url URL, or env LINKEDIN_CLI_UPDATE_URL): a base URL serving latest.json. Downloads are verified with sha256; the previous binary stays as <binary>.old. The service is restarted, and the extension told to reload, only when no job is running; otherwise it is reported and skipped (run service stop/start later). Only works for the compiled binary.`,
-  opts: { check: B("Only compare versions; change nothing."), text: TEXT },
+  opts: { check: B("Only compare versions; change nothing.") },
 };
 
 export const GROUP_DESC: Record<string, string> = {

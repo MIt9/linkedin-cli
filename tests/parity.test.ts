@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fakeExt, startSvc, type Svc } from "./helpers";
+import { cli, fakeExt, startSvc, type Svc } from "./helpers";
 
 const d = mkdtempSync(join(tmpdir(), "p-"));
 const IMG = join(d, "a.png"); writeFileSync(IMG, Buffer.concat([Buffer.from("89504e47", "hex"), Buffer.alloc(16)]));
@@ -62,6 +62,20 @@ describe("COMMANDS.md parity with fake extension", () => {
     expect(ext.calls.length).toBe(before + 1);
     expect(ext.calls.at(-1)).toMatchObject({ tool, args });
   });
+
+  test("text mode renders every command (and its preview) without braces or errors", async () => {
+    const env = { ...svc.env, LINKEDIN_CLI_FORMAT: "text" };
+    for (const [argv] of table) {
+      for (const a of [argv, argv.filter((x) => x !== "--confirm")]) {
+        const r = await cli(a, env);
+        const name = a.join(" ").replace(d, "");
+        expect(r.err, name).toBe("");
+        expect(r.code, name).toBe(0);
+        expect(r.out.trim(), name).not.toBe("");
+        for (const l of r.out.split("\n")) expect(/^\s*[{[]/.test(l), `${name}: ${l}`).toBe(false);
+      }
+    }
+  }, 60_000);
 
   test("outward commands without --confirm preview and do not call the extension", async () => {
     const before = ext.calls.length;

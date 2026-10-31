@@ -41,13 +41,13 @@ xattr -d com.apple.quarantine ~/.local/bin/linkedin
 ```sh
 linkedin extension install --text --open   # копіює розширення в ~/.linkedin-cli/extension, відкриває chrome://extensions
 linkedin service start
-linkedin doctor --text
+linkedin doctor
 ```
 
-За замовчуванням команди друкують JSON (його читають агенти). Для людини є прапорець `--text` (`extension install`, `doctor`, `update`): коротке пояснення звичайною мовою. `install.sh` сам викликає `linkedin extension install --text`, тож після `curl ... | sh` ви бачите:
+У терміналі команди друкують зрозумілий текст, у pipe (скрипти, агенти) — JSON, див. «Формат виводу». `install.sh` пише в pipe, тому сам викликає `linkedin extension install --text`, і після `curl ... | sh` ви бачите:
 
 ```
-Extension 0.2.4 installed to /Users/you/.linkedin-cli/extension
+Extension 0.2.5 installed to /Users/you/.linkedin-cli/extension
 Extension ID: pkgbinmnaaomjnafdfocndamjhaaoffl
 Path copied to clipboard
 
@@ -58,19 +58,19 @@ Next, in Chrome:
   4. Click Load unpacked, press Cmd+Shift+G in the folder dialog, paste the path (Cmd+V) and confirm
   5. Then run: linkedin service start && linkedin doctor
 
-Done: linkedin 0.2.4 installed to /Users/you/.local/bin/linkedin.
+Done: linkedin 0.2.5 installed to /Users/you/.local/bin/linkedin.
 Now finish the Chrome steps above; the last one starts the service and checks everything.
 ```
 
-Рядок «Path copied to clipboard» з'являється, лише якщо `pbcopy` спрацював; якщо файли вже були актуальні, перший рядок скаже `already installed ... (files unchanged)`, а якщо стару папку замінено, буде `Previous folder kept as ...extension.bak`. Без `--text` `extension install` друкує JSON із `path`, `extensionId` і трьома ручними кроками.
+Рядок «Path copied to clipboard» з'являється, лише якщо `pbcopy` спрацював; якщо файли вже були актуальні, перший рядок скаже `already installed ... (files unchanged)`, а якщо стару папку замінено, буде `Previous folder kept as ...extension.bak`. У pipe без `--text` `extension install` друкує JSON із `path`, `extensionId` і трьома ручними кроками.
 
-`linkedin doctor --text` друкує по рядку на перевірку, для збоїв додає відступний рядок `fix:` і підсумок (код виходу 1 лишається):
+`linkedin doctor` у терміналі друкує вердикт одним рядком, потім по рядку на перевірку, для збоїв додає відступний рядок `fix:` (код виходу 1 лишається):
 
 ```
-[ok] binary version: linkedin 0.2.4 (/Users/you/.local/bin/linkedin)
+Doctor: 1 of 9 checks FAILED. Do the fix line under each [FAIL], then run linkedin doctor again.
+[ok] binary version: linkedin 0.2.5 (/Users/you/.local/bin/linkedin)
 [FAIL] service running: not running
     fix: Run `linkedin service start`.
-Problems found: 1 of 9 checks failed. Apply the fix lines above, then run: linkedin doctor --text
 ```
 
 Це робиться один раз: каталог стабільний, а ID розширення зафіксований ключем у `manifest.json` (`pkgbinmnaaomjnafdfocndamjhaaoffl`). Сервіс приймає `/ext` лише від `chrome-extension://<цей ID>`. `linkedin service status` має показати `extensionPinned: true`, `connected: true`, `match: true`.
@@ -94,7 +94,27 @@ linkedin extension install   # бере розширення з ./extension
 
 ## Використання
 
-Результат — JSON на stdout. Помилка — JSON на stderr і ненульовий код виходу.
+### Формат виводу
+
+- `--json` змушує JSON, `--text` — текст; прапорці глобальні (приймає кожна команда) і взаємовиключні (разом — `USAGE`, код 2).
+- Без прапорців: змінна `LINKEDIN_CLI_FORMAT=json|text`; інакше stdout — термінал → текст, не термінал (pipe, агент, скрипт, тести) → JSON, як і раніше.
+- Помилка: у терміналі (stderr) `Error: <повідомлення>` і рядок `Hint:`, якщо є очевидне виправлення (`PORT_IN_USE`, `SERVICE_UNAVAILABLE` → `linkedin service start`, `HALTED` → `linkedin service resume`, `RATE_LIMIT`, `USAGE` → `linkedin <команда> --help`); поза терміналом — JSON-об'єкт помилки на stderr. Коди виходу не змінюються.
+- У тексті довгі значення скорочуються (`...`), JSON завжди повний.
+- Виняток: у команд, що мають власний `--text` (`post publish`, `message send`, `comment add`, `browser type` тощо), це текст повідомлення, тому текстовий вивід для них вмикайте через `LINKEDIN_CLI_FORMAT=text` (у терміналі він і так текстовий).
+
+```
+$ linkedin service start && linkedin doctor
+Started
+Service: running (pid 33060, port 47851, version 0.2.5)
+Extension: NOT connected
+  Expected extension ID: pkgbinmnaaomjnafdfocndamjhaaoffl (pinned). Load it from /Users/you/.linkedin-cli/extension in chrome://extensions, then wait up to 30 s.
+Safety: not halted
+Budget today: 0/60 actions, 0/15 this hour, invites 0/20
+Queue: 13 done, 0 waiting
+Next: run `linkedin extension install` (prints the Chrome steps), then `linkedin doctor`
+```
+
+Нижче в прикладах результатом вважається JSON (так, як його бачить скрипт чи агент); у терміналі те саме надрукується текстом.
 
 ```sh
 linkedin people search --keywords "react tech lead" --network 2
@@ -253,7 +273,7 @@ linkedin update
 
 ### Діагностика: `linkedin doctor`
 
-Перевіряє: версію бінарника, права каталогу стану (700) і `token` (600), чи працює сервіс, порт (вільний чи наш), підключення розширення, сумісність версій, чи файли розширення в `~/.linkedin-cli/extension` ті самі, що вбудовані в бінарник, стан HALTED, наявність Chrome. Результат — JSON `{ok, checks:[{name, ok, detail, fix}]}`; для кожної невдалої перевірки `fix` каже, що робити. Код виходу 1, якщо хоч одна перевірка не пройдена.
+Перевіряє: версію бінарника, права каталогу стану (700) і `token` (600), чи працює сервіс, порт (вільний чи наш), підключення розширення, сумісність версій, чи файли розширення в `~/.linkedin-cli/extension` ті самі, що вбудовані в бінарник, стан HALTED, наявність Chrome. Результат — JSON `{ok, checks:[{name, ok, detail, fix}]}` (у терміналі — текст з вердиктом нагорі); для кожної невдалої перевірки `fix` каже, що робити. Код виходу 1, якщо хоч одна перевірка не пройдена.
 
 ### Видалення
 

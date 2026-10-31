@@ -104,7 +104,7 @@ describe("--text (human output; JSON stays the default)", () => {
     expect(r.json.steps).toHaveLength(3);
     expect((await cli(["doctor"], { LINKEDIN_CLI_DIR: join(tmp(), "none"), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), LINKEDIN_CLI_PORT: "47999" })).json.checks).toBeTruthy();
   });
-  test("doctor --text on a fresh machine: [ok]/[FAIL] lines, indented fix, verdict, exit 1", async () => {
+  test("doctor --text on a fresh machine: verdict first, [ok]/[FAIL] lines, indented fix, exit 1", async () => {
     const r = await cli(["doctor", "--text"], { LINKEDIN_CLI_DIR: join(tmp(), "none"), LINKEDIN_CLI_EXT_SRC: extSrc("1.0.0"), LINKEDIN_CLI_PORT: "47999" });
     expect(r.code).toBe(1);
     expect(r.json).toBeUndefined();
@@ -113,7 +113,7 @@ describe("--text (human output; JSON stays the default)", () => {
     const i = lines.findIndex((l) => l.startsWith("[FAIL] service running: "));
     expect(i).toBeGreaterThan(-1);
     expect(lines[i + 1]).toBe("    fix: Run `linkedin service start`.");
-    expect(lines.at(-1)).toMatch(/^Problems found: \d+ of 9 checks failed\./);
+    expect(lines[0]).toMatch(/^Doctor: \d+ of 9 checks FAILED/);
   });
   test("doctor --text healthy: all [ok], verdict, exit 0 when Chrome is present", async () => {
     const svc = await startSvc(), sh = shims(), env = { ...svc.env, PATH: sh.PATH };
@@ -123,14 +123,14 @@ describe("--text (human output; JSON stays the default)", () => {
       const r = await cli(["doctor", "--text"], env);
       const lines = r.out.trimEnd().split("\n");
       expect(lines.filter((l) => l.startsWith("[ok] ")).length).toBeGreaterThanOrEqual(8);
-      if (r.code === 0) { expect(lines.some((l) => l.startsWith("[FAIL]"))).toBe(false); expect(lines.at(-1)).toBe("All good: 9 of 9 checks passed."); }
+      if (r.code === 0) { expect(lines.some((l) => l.startsWith("[FAIL]"))).toBe(false); expect(lines[0]).toBe("Doctor: all good (9 of 9 checks passed)"); }
       else expect(lines.filter((l) => l.startsWith("[FAIL]"))).toHaveLength(1); // only Chrome.app may be missing on a CI box
       ext.close();
     } finally { await svc.stop(); }
   });
-  test("--text is validated like other flags: help lists it, wrong command rejects it", async () => {
-    for (const c of [["extension", "install"], ["doctor"], ["update"]]) expect((await cli([...c, "--help"])).out, c.join(" ")).toContain("--text");
-    expect((await cli(["extension", "path", "--text"], { LINKEDIN_CLI_DIR: tmp() })).code).toBe(2);
+  test("--text is a global flag: help lists it, every command accepts it, --text=x is rejected", async () => {
+    for (const c of [["extension", "install"], ["doctor"], ["update"], ["extension", "path"]]) expect((await cli([...c, "--help"])).out, c.join(" ")).toContain("--text");
+    expect((await cli(["extension", "path", "--text"], { LINKEDIN_CLI_DIR: tmp() })).code).toBe(0);
     expect((await cli(["doctor", "--text=x"], { LINKEDIN_CLI_DIR: tmp() })).code).toBe(2);
   });
 });

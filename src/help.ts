@@ -3,6 +3,7 @@ import { CliError } from "./errors";
 
 // Text help is printed raw; --json help goes through the normal JSON path.
 export class Raw { constructor(readonly text: string) {} }
+const FORMAT = "Output format (every command): readable text in a terminal, JSON when piped. Force with --json or --text (mutually exclusive), or env LINKEDIN_CLI_FORMAT=json|text.";
 
 const keyOf = (group: string, cmd?: string) => SINGLE.has(group) && !cmd ? group : !cmd ? undefined : resolve(group, cmd)?.key ?? (GROUPS[group]?.includes(cmd) && SERVICE_DEFS[`${group} ${cmd}`] ? `${group} ${cmd}` : undefined);
 const unknown = (path: string[]): never => { throw new CliError("USAGE", `Unknown command: ${path.join(" ")}`); };
@@ -25,7 +26,7 @@ function commandText(key: string, s: Spec) {
   if (s.positional) out.push("", "Arguments:", table([[s.positional.name, s.positional]]));
   const opts = Object.entries(s.options);
   if (opts.length) out.push("", "Options:", table(opts));
-  out.push("", `Output: ${s.output} (JSON on stdout)`, "", "Examples:", ...s.examples.map((e) => `  ${e}`), "", "Add --json to this --help for the structured form.");
+  out.push("", `Output: ${s.output}`, `${FORMAT} ${s.options.text ? "Here --text is the post/message text, so force text with LINKEDIN_CLI_FORMAT=text." : ""}`.trimEnd(), "", "Examples:", ...s.examples.map((e) => `  ${e}`), "", "Add --json to this --help for the structured form.");
   return out.join("\n");
 }
 
@@ -37,7 +38,7 @@ export function help(path: string[], json: boolean): unknown {
     if (json) return { usage: "linkedin <group> <command> [options]", help: "linkedin help <group> [command] | linkedin <group> [command] --help [--json]", groups };
     const w = Math.max(...Object.keys(groups).map((g) => g.length));
     return new Raw(["Usage: linkedin <group> <command> [options]", "       linkedin help <group> [command]   (or: --help; add --json for structured help)", "", "Groups:",
-      ...Object.entries(groups).map(([g, v]) => `  ${g.padEnd(w)}  ${v.description}`), "", "Output is JSON on stdout; errors are JSON on stderr with a non-zero exit code."].join("\n"));
+      ...Object.entries(groups).map(([g, v]) => `  ${g.padEnd(w)}  ${v.description}`), "", FORMAT, "Errors: text `Error:`/`Hint:` on stderr in a terminal, JSON otherwise; non-zero exit code."].join("\n"));
   }
   if (!Object.hasOwn(GROUPS, group)) unknown(path);
   if (!cmd && !SINGLE.has(group)) {

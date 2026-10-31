@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn CLI Bridge",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA94rrQC5aHDuqHzEM3CG/xU/Kv+d/dfRk2KlhGmTdZffdh6MBJ+eEFnvi/B0W7N2vuCeOzWBnxXkfXAXN6lA9A/8XSIlojyRkVap2yr7BA41WZkZL/rnLjIxRD2P/dA5FERBlSBPNLlsKJcsh47EGcOapK3cWv7z2Ya5QSqPPYcL5fPmJobzyiBiLpWAGSjwptpA7mkoJMq2DJNpSr4LqySVaaUIVgvWFwJzlryGtJ3NqWyHN3Eh7p20RxVP14JgkEBNBs5U0KAWESmEiiZQJp4E3dnH3FjdaE29dTQWz373qPEFYz/SgAujeByWP9HPCiT2jMhWzRBtee3uQy4IdkQIDAQAB",
   "description": "Lets a local CLI service drive LinkedIn with real (trusted) clicks and keystrokes.",
   "permissions": [
