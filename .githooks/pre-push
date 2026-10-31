@@ -1,0 +1,86 @@
+#!/bin/sh
+# pre-push: publishes a GitHub Release when a v* tag is pushed. Any other push exits 0 silently.
+# Env: SKIP_RELEASE=1 skips; RELEASE_DRY_RUN=1 runs all checks + build, prints the gh command instead of running it;
+#      RELEASE_TARGETS=host|all (default host; "all" also builds darwin-x64 and needs network for Bun's cross runtime);
+#      RELEASE_TEST_CMD / RELEASE_TYPECHECK_CMD / RELEASE_BUILD_CMD override the steps (tests use stubs).
+remote="$1"
+refs="$(cat)" # read all of stdin first: the commands below must not consume it
+tags=""
+while read -r lref lsha rref rsha; do
+  case "$lref" in refs/tags/v*) [ "$lsha" = 0000000000000000000000000000000000000000 ] || tags="$tags $lref" ;; esac
+done <<EOT
+$refs
+EOT
+[ -n "$tags" ] || exit 0
+if [ -n "${SKIP_RELEASE:-}" ]; then echo "pre-push: SKIP_RELEASE set, not creating a GitHub release" >&2; exit 0; fi
+
+exec >&2 </dev/null
+step() { echo "pre-push: $*"; }
+fail() { echo "pre-push: release $tag ABORTED: $*" >&2; echo "pre-push: push cancelled. Fix it, then retry: git push $remote $tag   (bypass: SKIP_RELEASE=1 git push ...)" >&2; exit 1; }
+q() { case "$1" in *[!A-Za-z0-9_./:=+@%-]*|"") printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")" ;; *) printf %s "$1" ;; esac; }
+ver_of() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1; }
+run() { env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE sh -c "$1"; }
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+for ref in $tags; do
+  tag="${ref#refs/tags/}"
+  step "release $tag"
+  [ "$(git cat-file -t "$ref")" = commit ] || fail "$tag is an annotated tag; use a lightweight tag (git tag $tag) so GitHub's tag matches the pushed one"
+  commit="$(git rev-parse "$ref^{commit}")"
+  pv="$(ver_of package.json)"; mv="$(ver_of extension/manifest.json)"
+  [ "$tag" = "v$pv" ] || fail "tag $tag does not match package.json version $pv (expected v$pv)"
+  [ "$tag" = "v$mv" ] || fail "tag $tag does not match extension/manifest.json version $mv (expected v$mv)"
+  [ "$(git rev-parse HEAD)" = "$commit" ] || fail "tag $tag points to $(git rev-parse --short "$commit") but HEAD is $(git rev-parse --short HEAD): check out the tagged commit"
+  [ -z "$(git status --porcelain)" ] || fail "working tree is not clean (commit or stash first)"
+  # gh creates the release (and its tag) on GitHub before this push transfers anything, so the commit must already be there.
+  [ -n "$(git for-each-ref --contains "$commit" "refs/remotes/$remote" 2>/dev/null)" ] || fail "commit is not on remote '$remote' yet: run git push $remote main first, then git push $remote $tag"
+
+  step "bun test"; run "${RELEASE_TEST_CMD:-bun test}" || fail "tests failed"
+  step "typecheck"; run "${RELEASE_TYPECHECK_CMD:-bun run typecheck}" || fail "typecheck failed"
+
+  targets="${RELEASE_TARGETS:-host}"
+  case "$targets" in
+    all) arches="arm64 x64"; flag=" --all" ;;
+    host) flag=""; case "$(uname -m)" in arm64) arches=arm64 ;; *) arches=x64 ;; esac ;;
+    *) fail "RELEASE_TARGETS must be host or all (got $targets)" ;;
+  esac
+  step "build (RELEASE_TARGETS=$targets)"
+  export RELEASE_TARGETS="$targets"
+  run "${RELEASE_BUILD_CMD:-bun run build$flag}" || fail "build failed"
+  echo "pre-push: built arches: $arches"
+
+  lj=dist/latest.json
+  [ -f "$lj" ] || fail "$lj missing after build"
+  [ "$(plutil -extract version raw -o - "$lj" 2>/dev/null)" = "$pv" ] || fail "$lj version is not $pv"
+  listed=""
+  for key in $(for a in $arches; do echo "binaries.darwin-$a"; done) extension; do
+    url="$(plutil -extract "$key.url" raw -o - "$lj" 2>/dev/null)" || fail "$lj has no $key.url"
+    want="$(plutil -extract "$key.sha256" raw -o - "$lj" 2>/dev/null)" || fail "$lj has no $key.sha256"
+    [ -f "dist/$url" ] || fail "dist/$url listed in $lj does not exist"
+    got="$(shasum -a 256 "dist/$url" | cut -d' ' -f1)"
+    [ "$got" = "$want" ] || fail "sha256 mismatch for dist/$url (latest.json $want, file $got)"
+    listed="$listed $url"
+  done
+  assets=""
+  for f in dist/*.tar.gz; do
+    case " $listed " in *" ${f#dist/} "*) assets="$assets $f" ;; *) fail "$f is not listed in $lj" ;; esac
+  done
+  [ -f scripts/install.sh ] || fail "scripts/install.sh missing"
+
+  out="$(gh release view "$tag" 2>&1)" && fail "GitHub release $tag already exists (never overwritten); bump the version or delete the release by hand"
+  case "$out" in *"release not found"*) ;; *) fail "cannot check for an existing release (gh: $out)" ;; esac
+
+  prev="$(git describe --tags --abbrev=0 --match 'v*' "$commit^" 2>/dev/null)"
+  if [ -n "$prev" ]; then notes="$(git log --pretty='- %s' "$prev..$commit")"; else notes="$(git log --pretty='- %s' -n 50 "$commit")"; fi
+  [ -n "$notes" ] || notes="Release $tag"
+
+  # shellcheck disable=SC2086
+  set -- release create "$tag" --target "$commit" --title "$tag" --notes "$notes" $assets dist/latest.json scripts/install.sh
+  if [ -n "${RELEASE_DRY_RUN:-}" ]; then
+    printf 'pre-push: RELEASE_DRY_RUN, would run: gh'; for a; do printf ' '; q "$a"; done; echo
+    continue
+  fi
+  step "gh release create $tag"
+  gh "$@" || fail "gh release create failed (a partial release may exist: check/delete it on GitHub before retrying)"
+  echo "pre-push: release $tag created"
+done

@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { color-scheme: light dark; --muted: #80868b; --ok: #1e8e3e; --err: #d93025; --run: #f9ab00; }
+    body { width: 360px; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
+    header { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid #8884; }
+    header img { width: 24px; height: 24px; }
+    header h1 { font-size: 14px; margin: 0; flex: 1; }
+    .status { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+    .dot.on { background: var(--ok); }
+    .status small { color: var(--muted); display: block; }
+    .bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; color: var(--muted); }
+    button { font: inherit; padding: 2px 8px; cursor: pointer; }
+    ul { list-style: none; margin: 0; padding: 0 0 8px; max-height: 360px; overflow-y: auto; }
+    li { padding: 8px 12px; border-top: 1px solid #8882; }
+    li .top { display: flex; gap: 6px; align-items: baseline; }
+    li .tool { font-weight: 600; }
+    li .time { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    li .summary, li .result { color: var(--muted); word-break: break-word; }
+    li .error { color: var(--err); word-break: break-word; }
+    .ok::before { content: '✓'; color: var(--ok); }
+    .error-icon::before { content: '✕'; color: var(--err); }
+    .running::before { content: '…'; color: var(--run); }
+    .empty { padding: 12px; color: var(--muted); }
+    .halted { display: flex; gap: 8px; align-items: center; margin: 0 12px 8px; padding: 8px; border-radius: 6px;
+      background: #d9302522; color: var(--err); word-break: break-word; }
+    .halted[hidden] { display: none; }
+    #versions.error { color: var(--err); }
+    #tabs { max-height: 160px; }
+    #tabs li { display: flex; gap: 6px; align-items: center; padding: 6px 12px; }
+    #tabs li.sel { background: #1e8e3e22; }
+    #tabs .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="">
+    <h1>LinkedIn CLI Bridge</h1>
+  </header>
+  <div class="status">
+    <span id="dot" class="dot"></span>
+    <div>
+      <div id="statusText">…</div>
+      <small id="statusHint"></small>
+      <small id="versions"></small>
+      <small id="ident" style="user-select:all;word-break:break-all"></small>
+    </div>
+    <button id="reconnect" style="margin-left:auto">Reconnect</button>
+  </div>
+  <div class="bar">
+    <span>Service <code id="url"></code></span>
+    <form id="portForm" style="display:flex;gap:4px;align-items:center">
+      <input id="port" inputmode="numeric" size="6" aria-label="Port" placeholder="47851">
+      <button>Save</button>
+    </form>
+  </div>
+  <div id="portErr" class="error" style="padding:0 12px" hidden></div>
+  <div id="halted" class="halted" hidden>
+    <span id="haltedText"></span>
+  </div>
+  <div class="bar">
+    <span>Tabs <small>· LinkedIn CLI bot group</small></span>
+    <span><button id="showWindow">Show window</button> <button id="clearTab">Clear</button></span>
+  </div>
+  <ul id="tabs"></ul>
+  <div class="bar">
+    <span>History</span>
+    <button id="clear">Clear</button>
+  </div>
+  <ul id="history"></ul>
+  <script src="protocol.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
